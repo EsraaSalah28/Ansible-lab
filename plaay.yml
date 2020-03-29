@@ -1,0 +1,91 @@
+---
+ - hosts: gocd
+   remote_user: ec2-user
+   become: true
+
+   tasks:
+   
+
+   - name: Install open jdk
+     yum: 
+      name: java-1.8.0-openjdk-devel
+      state: present
+
+   - name: Recursively remove directory
+     file:
+       path: /app
+       state: absent
+
+   - name: Create a directory if it does not exist
+     file:
+      path: /app
+      state: directory
+
+   -  name: install nexus
+      get_url:
+         url: https://download.sonatype.com/nexus/3/latest-unix.tar.gz
+         dest: /app 
+      
+   -  name: Extract nexus
+      unarchive:
+        src: /app/nexus-3.22.0-02-unix.tar.gz
+        dest: /app/
+        remote_src: yes
+ 
+   - name: Copy files from nexus-3* to nexus
+     command: mv /app/nexus-3.22.0-02 /app/nexus
+ 
+   - name: Add the user nexus
+     user:
+       name: nexus
+ 
+   - name: Recursively change ownership of a directory
+     file:
+      path: /app/nexus
+      state: directory
+      owner: nexus
+      group: nexus
+
+   - name: Replace
+     replace:
+        path: /app/nexus/bin/nexus.rc
+        regexp: '#run_as_user=""'
+        replace: 'run_as_user="nexus"'
+
+  #  - name: Create a directory if it does not exist
+  #    file:
+  #     path: /etc/systemd/system/nexus.service
+  #     state: file
+    
+   - name: Insert some code 
+     blockinfile:
+      path: /etc/systemd/system/nexus.service
+      block: |
+          [Unit]
+          Description=nexus service
+          After=network.target
+          
+          [Service]
+          Type=forking
+          LimitNOFILE=65536
+          User=nexus
+          Group=nexus
+          ExecStart=/app/nexus/bin/nexus start
+          ExecStop=/app/nexus/bin/nexus stop
+          User=nexus
+          Restart=on-abort
+          
+          [Install]
+          WantedBy=multi-user.target
+
+   - name: Register service with chkconfig system
+     service: name=nexus enabled=yes
+
+   - name: nexus
+     command: chkconfig nexus on
+
+   - name: Set service start/stop order
+     service:
+       name: nexus
+       state: started
+  
